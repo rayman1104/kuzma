@@ -1,5 +1,6 @@
 import type { Api } from "grammy";
 import type { KuzmaEvent } from "./events";
+import { markdownToTelegramHtml } from "./telegram-format";
 
 const MAX_LEN = 4096;
 const EDIT_THROTTLE_MS = 1000;
@@ -88,26 +89,46 @@ export class TelegramRenderer {
   private async flush(): Promise<void> {
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     if (!this.accText.trim()) return;
-    const chunks = splitMessage(this.accText);
+
+    const html = markdownToTelegramHtml(this.accText);
+    const chunks = splitMessage(html);
+
     for (let i = 0; i < chunks.length; i++) {
       if (i === 0 && this.messageId) {
-        try { await this.api.editMessageText(this.chatId, this.messageId, chunks[i]); }
-        catch { await this.sendNew(chunks[i]); }
+        try {
+          await this.api.editMessageText(this.chatId, this.messageId, chunks[i], { parse_mode: "HTML" });
+        } catch (err: any) {
+          if (!err?.description?.includes("not modified")) {
+            // HTML parse failed — retry without formatting
+            try {
+              await this.api.editMessageText(this.chatId, this.messageId, splitMessage(this.accText)[i]);
+            } catch {
+              await this.sendNew(chunks[i]);
+            }
+          }
+        }
       } else {
-        await this.sendNew(chunks[i]);
+        await this.sendNew(chunks[i], "HTML");
       }
     }
   }
 
-  private async sendNew(text: string): Promise<void> {
+  private async sendNew(text: string, parseMode?: string): Promise<void> {
     const opts: any = {};
     if (this.threadId) opts.message_thread_id = this.threadId;
+    if (parseMode) opts.parse_mode = parseMode;
     try {
       const sent = await this.api.sendMessage(this.chatId, text, opts);
       this.messageId = sent.message_id;
     } catch (err: any) {
-      if (err?.description?.includes("message thread not found")) {
-        const sent = await this.api.sendMessage(this.chatId, text);
+      if (parseMode && err?.description?.includes("can't parse entities")) {
+        // Fallback: send without formatting
+        delete opts.parse_mode;
+        const sent = await this.api.sendMessage(this.chatId, this.accText.slice(0, MAX_LEN), opts);
+        this.messageId = sent.message_id;
+      } else if (err?.description?.includes("message thread not found")) {
+        delete opts.message_thread_id;
+        const sent = await this.api.sendMessage(this.chatId, text, opts);
         this.messageId = sent.message_id;
       }
     }

@@ -3,6 +3,13 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --hot src/index.ts",
+    "stop": "lsof -ti :${ASK_USER_BRIDGE_PORT:-3848} | xargs kill 2>/dev/null && echo 'Stopped.' || echo 'Not running.'",
+    "doctor": "bun run scripts/doctor.ts",
+    "test": "bun test"
+  },
   "devDependencies": {
     "@types/bun": "^1.3.9"
   },

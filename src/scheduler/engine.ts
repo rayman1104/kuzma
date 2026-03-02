@@ -1,9 +1,13 @@
+import { resolve } from "path";
 import { Cron } from "croner";
 import PQueue from "p-queue";
 import type { Config } from "../config";
 import type { Database } from "bun:sqlite";
 import { TaskRepo, type ScheduledTask } from "./tasks";
-import { runClaude } from "../claude/runner";
+import { runClaude, type RunOptions } from "../claude/runner";
+import type { KuzmaEvent } from "../claude/events";
+
+export type ClaudeRunner = (options: RunOptions) => AsyncGenerator<KuzmaEvent>;
 
 export class Scheduler {
   private jobs = new Map<string, Cron>();
@@ -13,7 +17,8 @@ export class Scheduler {
   constructor(
     private config: Config,
     db: Database,
-    private deliverFn: (to: string, text: string) => Promise<void>
+    private deliverFn: (to: string, text: string) => Promise<void>,
+    private claudeRunner: ClaudeRunner = runClaude
   ) {
     this.repo = new TaskRepo(db);
     this.queue = new PQueue({ concurrency: 1 });
@@ -23,9 +28,31 @@ export class Scheduler {
     return this.queue.add(fn, { priority: 10 }) as Promise<T>;
   }
 
+  private pollTimer: Timer | null = null;
+
   start(): void {
+    this.sync();
+    // Poll for new tasks every 30 seconds (supports hot-add via task-cli)
+    this.pollTimer = setInterval(() => this.sync(), 30_000);
+  }
+
+  private sync(): void {
     const tasks = this.repo.listActive();
-    for (const t of tasks) this.registerJob(t);
+    const activeIds = new Set(tasks.map(t => t.id));
+    // Register new tasks
+    for (const t of tasks) {
+      if (!this.jobs.has(t.id)) {
+        this.registerJob(t);
+        console.log(`Scheduler: registered "${t.what}" [${t.schedule}]`);
+      }
+    }
+    // Remove stale jobs
+    for (const id of this.jobs.keys()) {
+      if (!activeIds.has(id)) {
+        this.jobs.get(id)?.stop();
+        this.jobs.delete(id);
+      }
+    }
     console.log(`Scheduler: ${tasks.length} active tasks`);
   }
 
@@ -51,7 +78,7 @@ export class Scheduler {
 
     let result = "";
     try {
-      for await (const ev of runClaude({ prompt, workspacePath: this.config.workspacePath, timeoutMs: 180_000 })) {
+      for await (const ev of this.claudeRunner({ prompt, workspacePath: this.config.workspacePath, systemPromptPath: resolve(this.config.workspacePath, "CLAUDE.md"), timeoutMs: 180_000 })) {
         if (ev.type === "text") result += ev.content;
       }
     } catch (err) { result = `Error: ${err}`; }
@@ -77,5 +104,9 @@ export class Scheduler {
     return start <= end ? cur >= start && cur < end : cur >= start || cur < end;
   }
 
-  stop(): void { for (const j of this.jobs.values()) j.stop(); this.jobs.clear(); }
+  stop(): void {
+    if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+    for (const j of this.jobs.values()) j.stop();
+    this.jobs.clear();
+  }
 }

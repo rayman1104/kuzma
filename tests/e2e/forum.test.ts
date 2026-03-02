@@ -17,7 +17,6 @@ const FAKE_BOT_INFO = {
 const testConfig: Config = {
   telegramBotToken: "fake:token",
   telegramUserId: 111,
-  telegramForumChatId: null,
   parakeetUrl: "http://localhost:5092",
   vaultPath: "/tmp/test-vault",
   workspacePath: "/tmp/test-workspace",

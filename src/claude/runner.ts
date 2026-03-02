@@ -5,6 +5,7 @@ export interface RunOptions {
   prompt: string;
   sessionId?: string;
   workspacePath: string;
+  systemPromptPath?: string;
   abortSignal?: AbortSignal;
   timeoutMs?: number;
 }
@@ -13,7 +14,7 @@ const RESULT_GRACE_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
 export async function* runClaude(options: RunOptions): AsyncGenerator<KuzmaEvent> {
-  const { prompt, sessionId, workspacePath, abortSignal, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+  const { prompt, sessionId, workspacePath, systemPromptPath, abortSignal, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
 
   const args = [
     "-p",
@@ -22,12 +23,22 @@ export async function* runClaude(options: RunOptions): AsyncGenerator<KuzmaEvent
     "--permission-mode", "bypassPermissions",
     "--setting-sources", "user",
   ];
+
+  // Inject workspace CLAUDE.md as system prompt (--setting-sources user skips project CLAUDE.md)
+  if (systemPromptPath) {
+    try {
+      const content = await Bun.file(systemPromptPath).text();
+      if (content.trim()) args.push("--append-system-prompt", content);
+    } catch {}
+  }
+
   if (sessionId) args.push("--resume", sessionId);
   args.push("--", prompt);
 
-  // Strip ANTHROPIC_API_KEY to force subscription billing
+  // Strip keys that interfere with child Claude process
   const env = { ...process.env };
-  delete env.ANTHROPIC_API_KEY;
+  delete env.ANTHROPIC_API_KEY; // force subscription billing
+  delete env.CLAUDECODE;        // prevent nested-session detection
 
   const proc = Bun.spawn({
     cmd: ["claude", ...args],

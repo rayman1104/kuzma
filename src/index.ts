@@ -50,7 +50,6 @@ async function main() {
 
   // Scheduler
   function getForumChatId(): number | null {
-    if (config.telegramForumChatId) return config.telegramForumChatId;
     const ids = forumChats.allIds();
     return ids.length > 0 ? ids[0] : null;
   }
@@ -78,7 +77,7 @@ async function main() {
   bot.start({
     onStart: async (botInfo) => {
       console.log(`Bot @${botInfo.username} is running`);
-      try { await bot.api.sendMessage(config.telegramUserId, "Kuzma online."); } catch {}
+      try { await bot.api.sendMessage(config.telegramUserId, "Здорово. Кузьма на месте."); } catch {}
     },
   });
 
@@ -89,7 +88,7 @@ async function main() {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log("Shutting down...");
-    try { await bot.api.sendMessage(config.telegramUserId, "Kuzma offline."); } catch {}
+    try { await bot.api.sendMessage(config.telegramUserId, "Пошёл я. Будет надо — зови."); } catch {}
     scheduler.stop();
     bot.stop();
     db.close();

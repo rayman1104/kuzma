@@ -1,23 +1,29 @@
+import { resolve } from "path";
 import type { Bot, Context } from "grammy";
 import type { Config } from "../../config";
 import { SessionRepo } from "../../db/client";
-import { runClaude } from "../../claude/runner";
+import { runClaude, type RunOptions } from "../../claude/runner";
+import type { KuzmaEvent } from "../../claude/events";
 import { TelegramRenderer } from "../../claude/renderer";
 import { getSessionKey } from "../session";
 import { Debouncer } from "../middleware/debounce";
+import { buildPrompt } from "../context-builder";
 import type { Database } from "bun:sqlite";
 
-export function setupMessageHandler(bot: Bot, config: Config, db: Database) {
+export type ClaudeRunner = (options: RunOptions) => AsyncGenerator<KuzmaEvent>;
+
+export function setupMessageHandler(
+  bot: Bot, config: Config, db: Database,
+  claudeRunner: ClaudeRunner = runClaude
+) {
   const sessions = new SessionRepo(db);
   const activeAborts = new Map<string, AbortController>();
   const ctxMap = new Map<string, Context>();
+  const queues = new Map<string, Promise<void>>();
 
   async function processWithClaude(ctx: Context, text: string): Promise<void> {
     const sessionKey = getSessionKey(ctx);
     const existingSession = sessions.get(sessionKey) ?? undefined;
-
-    const prev = activeAborts.get(sessionKey);
-    if (prev) prev.abort();
 
     const ac = new AbortController();
     activeAborts.set(sessionKey, ac);
@@ -26,10 +32,11 @@ export function setupMessageHandler(bot: Bot, config: Config, db: Database) {
     const renderer = new TelegramRenderer(ctx.api, ctx.chat!.id, threadId);
 
     try {
-      for await (const event of runClaude({
+      for await (const event of claudeRunner({
         prompt: text,
         sessionId: existingSession,
         workspacePath: config.workspacePath,
+        systemPromptPath: resolve(config.workspacePath, "CLAUDE.md"),
         abortSignal: ac.signal,
       })) {
         await renderer.handleEvent(event);
@@ -40,16 +47,36 @@ export function setupMessageHandler(bot: Bot, config: Config, db: Database) {
     } catch (err: any) {
       if (err.name !== "AbortError") {
         console.error("Runner error:", err);
-        try { await ctx.reply("Something went wrong."); } catch {}
+        try { await ctx.reply("Тьфу, сломалось что-то."); } catch {}
       }
     } finally {
       activeAborts.delete(sessionKey);
     }
   }
 
+  function enqueue(key: string, fn: () => Promise<void>): void {
+    const prev = queues.get(key) ?? Promise.resolve();
+    const next = prev.then(fn, fn);
+    queues.set(key, next);
+    next.finally(() => { if (queues.get(key) === next) queues.delete(key); });
+  }
+
   const debouncer = new Debouncer(2000, 30000, (key, combined) => {
     const ctx = ctxMap.get(key);
-    if (ctx) processWithClaude(ctx, combined).catch(console.error);
+    if (ctx) enqueue(key, () => processWithClaude(ctx, combined));
+  });
+
+  // Commands must be registered BEFORE the catch-all text handler
+  bot.command("new", async (ctx) => {
+    sessions.delete(getSessionKey(ctx));
+    await ctx.reply("Добро, начнём с чистого листа.");
+  });
+
+  bot.command("stop", async (ctx) => {
+    const key = getSessionKey(ctx);
+    const ac = activeAborts.get(key);
+    if (ac) { ac.abort(); await ctx.reply("Стоп машина."); }
+    else { await ctx.reply("Да я и так стою."); }
   });
 
   bot.on("message:text", (ctx) => {
@@ -57,19 +84,7 @@ export function setupMessageHandler(bot: Bot, config: Config, db: Database) {
     if (!text || text.startsWith("/")) return;
     const key = getSessionKey(ctx);
     ctxMap.set(key, ctx);
-    debouncer.add(key, text);
-  });
-
-  bot.command("new", async (ctx) => {
-    sessions.delete(getSessionKey(ctx));
-    await ctx.reply("New session started.");
-  });
-
-  bot.command("stop", async (ctx) => {
-    const key = getSessionKey(ctx);
-    const ac = activeAborts.get(key);
-    if (ac) { ac.abort(); await ctx.reply("Stopped."); }
-    else { await ctx.reply("Nothing running."); }
+    debouncer.add(key, buildPrompt(ctx, text));
   });
 
   return { debouncer, ctxMap, processWithClaude };

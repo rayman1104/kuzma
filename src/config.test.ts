@@ -6,6 +6,7 @@ describe("config", () => {
     // Set defaults for optional vars
     process.env.TELEGRAM_BOT_TOKEN = "test-token";
     process.env.TELEGRAM_USER_ID = "12345";
+    process.env.ASK_USER_BRIDGE_PORT = "3847";
   });
 
   test("getConfig returns all required fields", () => {
