@@ -1,4 +1,5 @@
 import { getConfig } from "./config";
+import { startWatchdog } from "./watchdog";
 import { createDb } from "./db/client";
 import { createBot } from "./bot/telegram";
 import { setupMessageHandler } from "./bot/handlers/message";
@@ -60,9 +61,12 @@ async function main() {
     },
   });
 
-  const shutdown = () => { scheduler.stop(); bot.stop(); db.close(); process.exit(0); };
+  startWatchdog();
+
+  const shutdown = () => { console.log("Shutting down..."); scheduler.stop(); bot.stop(); db.close(); process.exit(0); };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
+  process.on("unhandledRejection", (e) => console.error("Unhandled:", e));
 }
 
 main().catch(console.error);
