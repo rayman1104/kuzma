@@ -5,6 +5,7 @@ import { setupMessageHandler } from "./bot/handlers/message";
 import { AskUserBridge } from "./bot/bridge";
 import { setupCallbackHandler } from "./bot/handlers/callback";
 import { setupForumHandlers } from "./bot/handlers/forum";
+import { createVoiceHandler } from "./bot/handlers/voice";
 
 async function main() {
   const config = getConfig();
@@ -20,6 +21,7 @@ async function main() {
 
   // Forum topic auto-mapping
   setupForumHandlers(bot, db);
+  bot.on("message:voice", createVoiceHandler(config, debouncer, ctxMap));
 
   console.log("Kuzma starting...");
   bot.start({
