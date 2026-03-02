@@ -28,5 +28,8 @@ export function initSchema(db: Database): void {
       chat_id INTEGER NOT NULL,
       PRIMARY KEY (name, chat_id)
     );
+    CREATE TABLE IF NOT EXISTS forum_chats (
+      chat_id INTEGER PRIMARY KEY
+    );
   `);
 }

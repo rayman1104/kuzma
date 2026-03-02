@@ -63,3 +63,25 @@ export class TopicRepo {
       .all(chatId) as Array<{ name: string; thread_id: number }>;
   }
 }
+
+export class ForumChatRepo {
+  constructor(private db: Database) {}
+
+  register(chatId: number): void {
+    this.db.prepare("INSERT OR IGNORE INTO forum_chats (chat_id) VALUES (?)").run(chatId);
+  }
+
+  unregister(chatId: number): void {
+    this.db.prepare("DELETE FROM forum_chats WHERE chat_id = ?").run(chatId);
+  }
+
+  isRegistered(chatId: number): boolean {
+    const row = this.db.prepare("SELECT 1 FROM forum_chats WHERE chat_id = ?").get(chatId);
+    return !!row;
+  }
+
+  allIds(): number[] {
+    const rows = this.db.prepare("SELECT chat_id FROM forum_chats").all() as { chat_id: number }[];
+    return rows.map(r => r.chat_id);
+  }
+}
