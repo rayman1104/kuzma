@@ -69,7 +69,7 @@ describe("Bot commands", () => {
 
     const sends = callsFor(apiCalls, "sendMessage");
     expect(sends.length).toBeGreaterThanOrEqual(1);
-    expect(sends.some(s => String(s.payload.text).includes("чистого листа"))).toBe(true);
+    expect(sends.some(s => String(s.payload.text).includes("Clean slate"))).toBe(true);
     expect(calls.length).toBe(0);
   });
 
@@ -112,7 +112,7 @@ describe("Bot commands", () => {
     await sleep(50);
 
     const sends = callsFor(apiCalls, "sendMessage");
-    expect(sends.some(s => String(s.payload.text).includes("Стоп машина"))).toBe(true);
+    expect(sends.some(s => String(s.payload.text).includes("Stopped"))).toBe(true);
     expect(aborted).toBe(true);
   });
 
@@ -132,7 +132,7 @@ describe("Bot commands", () => {
     await bot.handleUpdate(makeCommandUpdate("stop"));
 
     const sends = callsFor(apiCalls, "sendMessage");
-    expect(sends.some(s => String(s.payload.text).includes("и так стою"))).toBe(true);
+    expect(sends.some(s => String(s.payload.text).includes("not doing anything"))).toBe(true);
   });
 
   test("/tasks with no tasks replies 'No active tasks.'", async () => {
