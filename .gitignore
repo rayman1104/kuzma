@@ -4,3 +4,18 @@ data/
 .env
 *.db
 .tmp/
+
+# IDE / editors
+.cursor/
+.vscode/
+.idea/
+
+# OMC / Claude
+.omc/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker data
+docker-data/
