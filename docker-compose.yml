@@ -1,0 +1,8 @@
+services:
+  parakeet-stt:
+    image: ghcr.io/groxaxo/parakeet-tdt-0.6b-v3-fastapi-openai:cpu
+    ports: ["5092:5092"]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: { memory: 3G }
