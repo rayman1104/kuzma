@@ -59,6 +59,33 @@ For development with hot reload:
 bun run dev
 ```
 
+## Setup
+
+Kuzma has a two-stage setup process:
+
+### 1. CLI Setup
+
+Run the interactive setup script to create your `.env` file:
+
+```bash
+bun run setup
+```
+
+This walks you through configuring your Telegram bot token, user ID, and optional paths. It also validates your bot token against the Telegram API.
+
+### 2. Personality Setup (Telegram)
+
+On first start, if no persona is configured, the bot enters onboarding mode in Telegram. It asks you 4 questions:
+
+1. **Language** -- what language the bot should speak
+2. **Name** -- what the bot should call itself
+3. **Personality** -- a short description of the bot's tone and style
+4. **Extra instructions** -- any additional behavior rules (or "skip")
+
+The bot sends your answers to Claude to generate a full persona config (system prompt + all reply strings) and saves it to `data/persona.json`.
+
+To reconfigure the persona, delete `data/persona.json` and restart the bot.
+
 ## Configuration
 
 All configuration is done via environment variables. Bun loads `.env` automatically.
@@ -214,6 +241,7 @@ src/
   scheduler/     # Cron-based task scheduler
   stt/           # Parakeet STT client
   config.ts      # Environment configuration
+  persona.ts     # Persona type, loader, and defaults
   index.ts       # Entry point
   watchdog.ts    # Process health monitoring
 ```
