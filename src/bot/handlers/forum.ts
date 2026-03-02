@@ -1,4 +1,4 @@
-import type { Bot } from "grammy";
+import type { Api, Bot } from "grammy";
 import { TopicRepo } from "../../db/client";
 import type { Database } from "bun:sqlite";
 
@@ -22,4 +22,23 @@ export function setupForumHandlers(bot: Bot, db: Database) {
       topics.upsert(newName.toLowerCase(), threadId, chatId);
     }
   });
+}
+
+/** Create a topic in a forum group via Bot API and save the mapping. */
+export async function createForumTopic(
+  api: Api, topics: TopicRepo, chatId: number, name: string,
+): Promise<number> {
+  const result = await api.createForumTopic(chatId, name);
+  topics.upsert(name.toLowerCase(), result.message_thread_id, chatId);
+  console.log(`Topic created: "${name}" → ${result.message_thread_id}`);
+  return result.message_thread_id;
+}
+
+/** Get or create a topic thread ID by name. */
+export async function getOrCreateTopic(
+  api: Api, topics: TopicRepo, chatId: number, name: string,
+): Promise<number> {
+  const existing = topics.getThreadId(name.toLowerCase(), chatId);
+  if (existing) return existing;
+  return createForumTopic(api, topics, chatId, name);
 }

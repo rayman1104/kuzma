@@ -5,9 +5,11 @@ import { createBot } from "./bot/telegram";
 import { setupMessageHandler } from "./bot/handlers/message";
 import { AskUserBridge } from "./bot/bridge";
 import { setupCallbackHandler } from "./bot/handlers/callback";
-import { setupForumHandlers } from "./bot/handlers/forum";
+import { setupForumHandlers, getOrCreateTopic } from "./bot/handlers/forum";
 import { setupJoinHandler } from "./bot/handlers/join";
 import { createVoiceHandler } from "./bot/handlers/voice";
+import { createForumRoutes } from "./bot/routes/forum";
+import { createPhotoHandler, createDocumentHandler } from "./bot/handlers/photo";
 import { Scheduler } from "./scheduler/engine";
 import { TopicRepo } from "./db/client";
 import { TaskRepo } from "./scheduler/tasks";
@@ -30,9 +32,11 @@ async function main() {
 
   const { debouncer, ctxMap, processWithClaude } = setupMessageHandler(bot, config, db);
 
-  // ask_user bridge
+  // ask_user bridge + forum routes
+  const topicRepo = new TopicRepo(db);
   const bridge = new AskUserBridge();
   const onQuestion = setupCallbackHandler(bot, bridge, config.telegramUserId);
+  bridge.addRoutes(createForumRoutes(bot.api, topicRepo, forumChats));
   bridge.startServer(config.askUserBridgePort, onQuestion);
 
   // Dynamic forum registration (must be before forum handlers)
@@ -41,17 +45,28 @@ async function main() {
   // Forum topic auto-mapping
   setupForumHandlers(bot, db);
   bot.on("message:voice", createVoiceHandler(config, debouncer, ctxMap));
+  bot.on("message:photo", createPhotoHandler(config, debouncer, ctxMap));
+  bot.on("message:document", createDocumentHandler(config, debouncer, ctxMap));
 
   // Scheduler
-  const topicRepo = new TopicRepo(db);
+  function getForumChatId(): number | null {
+    if (config.telegramForumChatId) return config.telegramForumChatId;
+    const ids = forumChats.allIds();
+    return ids.length > 0 ? ids[0] : null;
+  }
+
   async function deliver(to: string, text: string) {
     if (to === "dm") { await bot.api.sendMessage(config.telegramUserId, text); return; }
-    if (to.startsWith("topic:") && config.telegramForumChatId) {
-      const tid = topicRepo.getThreadId(to.slice(6), config.telegramForumChatId);
-      const opts: any = {};
-      if (tid && tid !== 1) opts.message_thread_id = tid;
-      await bot.api.sendMessage(config.telegramForumChatId, text, opts);
-      return;
+    if (to.startsWith("topic:")) {
+      const forumChatId = getForumChatId();
+      if (forumChatId) {
+        const topicName = to.slice(6);
+        const tid = await getOrCreateTopic(bot.api, topicRepo, forumChatId, topicName);
+        const opts: any = {};
+        if (tid && tid !== 1) opts.message_thread_id = tid;
+        await bot.api.sendMessage(forumChatId, text, opts);
+        return;
+      }
     }
     await bot.api.sendMessage(config.telegramUserId, text);
   }
@@ -69,7 +84,17 @@ async function main() {
 
   startWatchdog();
 
-  const shutdown = () => { console.log("Shutting down..."); scheduler.stop(); bot.stop(); db.close(); process.exit(0); };
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log("Shutting down...");
+    try { await bot.api.sendMessage(config.telegramUserId, "Kuzma offline."); } catch {}
+    scheduler.stop();
+    bot.stop();
+    db.close();
+    process.exit(0);
+  };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
   process.on("unhandledRejection", (e) => console.error("Unhandled:", e));
