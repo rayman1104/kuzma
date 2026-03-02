@@ -2,7 +2,7 @@
 
 Your own Claude in Telegram -- a personal AI assistant with voice messages, forum topics, scheduled tasks, and MCP tool integration.
 
-[![CI](https://github.com/xmalakhov/kuzma/actions/workflows/ci.yml/badge.svg)](https://github.com/xmalakhov/kuzma/actions/workflows/ci.yml)
+[![CI](https://github.com/malakhov-dmitrii/kuzma/actions/workflows/ci.yml/badge.svg)](https://github.com/malakhov-dmitrii/kuzma/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
@@ -61,7 +61,7 @@ How Kuzma compares to [OpenClaw](https://github.com/openclaw/openclaw) and [Tako
 ### Install & Run
 
 ```bash
-git clone https://github.com/xmalakhov/kuzma.git
+git clone https://github.com/malakhov-dmitrii/kuzma.git
 cd kuzma
 bun install
 ```

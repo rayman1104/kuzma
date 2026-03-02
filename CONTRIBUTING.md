@@ -8,7 +8,7 @@ Thanks for your interest in contributing!
 2. Clone the repo and install dependencies:
 
 ```bash
-git clone https://github.com/xmalakhov/kuzma.git
+git clone https://github.com/malakhov-dmitrii/kuzma.git
 cd kuzma
 bun install
 ```

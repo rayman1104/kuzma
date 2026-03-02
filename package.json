@@ -7,7 +7,7 @@
   "author": "Aleksandr Malakhov",
   "repository": {
     "type": "git",
-    "url": "https://github.com/xmalakhov/kuzma.git"
+    "url": "https://github.com/malakhov-dmitrii/kuzma.git"
   },
   "keywords": ["telegram", "claude", "ai", "assistant", "bot", "voice", "mcp"],
   "scripts": {
