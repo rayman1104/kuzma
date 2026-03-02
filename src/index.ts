@@ -2,13 +2,24 @@ import { getConfig } from "./config";
 import { createDb } from "./db/client";
 import { createBot } from "./bot/telegram";
 import { setupMessageHandler } from "./bot/handlers/message";
+import { AskUserBridge } from "./bot/bridge";
+import { setupCallbackHandler } from "./bot/handlers/callback";
+import { setupForumHandlers } from "./bot/handlers/forum";
 
 async function main() {
   const config = getConfig();
   const db = createDb(config.dbPath);
   const bot = createBot(config);
 
-  setupMessageHandler(bot, config, db);
+  const { debouncer, ctxMap, processWithClaude } = setupMessageHandler(bot, config, db);
+
+  // ask_user bridge
+  const bridge = new AskUserBridge();
+  const onQuestion = setupCallbackHandler(bot, bridge, config.telegramUserId);
+  bridge.startServer(config.askUserBridgePort, onQuestion);
+
+  // Forum topic auto-mapping
+  setupForumHandlers(bot, db);
 
   console.log("Kuzma starting...");
   bot.start({
