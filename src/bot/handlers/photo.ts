@@ -5,6 +5,7 @@ import type { Debouncer } from "../middleware/debounce";
 import { buildPrompt } from "../context-builder";
 import { mkdirSync } from "fs";
 import { join } from "path";
+import { DEFAULT_PERSONA, type Persona } from "../../persona";
 
 const MEDIA_DIR = "media";
 
@@ -23,6 +24,7 @@ export function createPhotoHandler(
   config: Config,
   debouncer: Debouncer,
   ctxMap: Map<string, Context>,
+  persona?: Persona,
 ) {
   const mediaPath = join(config.workspacePath, MEDIA_DIR);
   mkdirSync(mediaPath, { recursive: true });
@@ -49,7 +51,7 @@ export function createPhotoHandler(
       debouncer.add(key, buildPrompt(ctx, parts.join("\n")));
     } catch (err) {
       console.error("Photo error:", err);
-      await ctx.reply("Не разглядел, скинь ещё раз.");
+      await ctx.reply(persona?.replies.photoError ?? DEFAULT_PERSONA.replies.photoError);
     }
   };
 }
@@ -58,6 +60,7 @@ export function createDocumentHandler(
   config: Config,
   debouncer: Debouncer,
   ctxMap: Map<string, Context>,
+  persona?: Persona,
 ) {
   const mediaPath = join(config.workspacePath, MEDIA_DIR);
   mkdirSync(mediaPath, { recursive: true });
@@ -85,7 +88,7 @@ export function createDocumentHandler(
       debouncer.add(key, buildPrompt(ctx, parts.join("\n")));
     } catch (err) {
       console.error("Document error:", err);
-      await ctx.reply("Не открылось, попробуй ещё.");
+      await ctx.reply(persona?.replies.documentError ?? DEFAULT_PERSONA.replies.documentError);
     }
   };
 }

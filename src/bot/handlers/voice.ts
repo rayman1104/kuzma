@@ -6,6 +6,7 @@ import type { Debouncer } from "../middleware/debounce";
 import { buildPrompt } from "../context-builder";
 import { mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
+import { DEFAULT_PERSONA, type Persona } from "../../persona";
 
 const TMP = join(import.meta.dir, "../../.tmp");
 mkdirSync(TMP, { recursive: true });
@@ -13,7 +14,8 @@ mkdirSync(TMP, { recursive: true });
 export function createVoiceHandler(
   config: Config,
   debouncer: Debouncer,
-  ctxMap: Map<string, Context>
+  ctxMap: Map<string, Context>,
+  persona?: Persona,
 ) {
   return async (ctx: Context): Promise<void> => {
     const voice = ctx.message?.voice;
@@ -68,7 +70,7 @@ export function createVoiceHandler(
       try { unlinkSync(ogg); unlinkSync(wav); } catch {}
     } catch (err) {
       console.error("Voice error:", err);
-      await ctx.reply("Не разобрал, бубнит чего-то.");
+      await ctx.reply(persona?.replies.voiceError ?? DEFAULT_PERSONA.replies.voiceError);
     }
   };
 }

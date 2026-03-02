@@ -70,9 +70,10 @@ async function main() {
 
   // Forum topic auto-mapping
   setupForumHandlers(bot, db);
-  bot.on("message:voice", createVoiceHandler(config, debouncer, ctxMap));
-  bot.on("message:photo", createPhotoHandler(config, debouncer, ctxMap));
-  bot.on("message:document", createDocumentHandler(config, debouncer, ctxMap));
+  const activePersona = persona ?? undefined;
+  bot.on("message:voice", createVoiceHandler(config, debouncer, ctxMap, activePersona));
+  bot.on("message:photo", createPhotoHandler(config, debouncer, ctxMap, activePersona));
+  bot.on("message:document", createDocumentHandler(config, debouncer, ctxMap, activePersona));
 
   // Scheduler
   function getForumChatId(): number | null {
