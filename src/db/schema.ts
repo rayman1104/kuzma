@@ -31,5 +31,11 @@ export function initSchema(db: Database): void {
     CREATE TABLE IF NOT EXISTS forum_chats (
       chat_id INTEGER PRIMARY KEY
     );
+    CREATE TABLE IF NOT EXISTS topic_projects (
+      thread_id INTEGER NOT NULL,
+      chat_id INTEGER NOT NULL,
+      project_path TEXT NOT NULL,
+      PRIMARY KEY (thread_id, chat_id)
+    );
   `);
 }

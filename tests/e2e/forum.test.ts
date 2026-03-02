@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { createTestDb, createTestBot, makeTopicCreatedUpdate, makeTopicEditedUpdate, makeForumTextUpdate, mockRunClaude, callsFor, sleep } from "./harness";
-import { ForumChatRepo, TopicRepo } from "../../src/db/client";
+import { createTestDb, createTestBot, makeTopicCreatedUpdate, makeTopicEditedUpdate, makeForumTextUpdate, makeForumCommandUpdate, mockRunClaude, callsFor, sleep } from "./harness";
+import { ForumChatRepo, TopicRepo, TopicProjectRepo } from "../../src/db/client";
 import { setupJoinHandler } from "../../src/bot/handlers/join";
 import { setupForumHandlers } from "../../src/bot/handlers/forum";
 import { createAuthMiddleware } from "../../src/bot/middleware/auth";
@@ -231,5 +231,143 @@ describe("forum message routing", () => {
     const withThread = sent.filter(c => c.payload.message_thread_id !== undefined);
     // General topic (thread_id=1) → renderer strips it
     expect(withThread.length).toBe(0);
+  });
+});
+
+describe("topic-project mapping", () => {
+  test("set project for topic → claudeRunner receives correct workspacePath", async () => {
+    const db = createTestDb();
+    const { bot } = createTestBot();
+    const forumChatIds = new Set([-1001234]);
+    const topicProjects = new TopicProjectRepo(db);
+    topicProjects.set(42, -1001234, "/home/user/myproject");
+
+    const events: KuzmaEvent[] = [
+      { type: "started", sessionId: "s-proj" },
+      { type: "text", content: "OK" },
+      { type: "completed", sessionId: "s-proj" },
+    ];
+    const { runner, calls } = mockRunClaude(events);
+
+    bot.use(createAuthMiddleware(111, forumChatIds));
+    setupMessageHandler(bot, testConfig, db, runner, topicProjects);
+    bot.botInfo = FAKE_BOT_INFO;
+
+    await bot.handleUpdate(makeForumTextUpdate("Hello", -1001234, 42));
+    await sleep(2500);
+    await sleep(500);
+
+    expect(calls.length).toBe(1);
+    expect(calls[0].workspacePath).toBe("/home/user/myproject");
+    expect(calls[0].systemPromptPath).toContain("/home/user/myproject/CLAUDE.md");
+  });
+
+  test("default workspacePath when no project mapped", async () => {
+    const db = createTestDb();
+    const { bot } = createTestBot();
+    const forumChatIds = new Set([-1001234]);
+    const topicProjects = new TopicProjectRepo(db);
+
+    const events: KuzmaEvent[] = [
+      { type: "started", sessionId: "s-def" },
+      { type: "text", content: "OK" },
+      { type: "completed", sessionId: "s-def" },
+    ];
+    const { runner, calls } = mockRunClaude(events);
+
+    bot.use(createAuthMiddleware(111, forumChatIds));
+    setupMessageHandler(bot, testConfig, db, runner, topicProjects);
+    bot.botInfo = FAKE_BOT_INFO;
+
+    await bot.handleUpdate(makeForumTextUpdate("Hello", -1001234, 55));
+    await sleep(2500);
+    await sleep(500);
+
+    expect(calls.length).toBe(1);
+    expect(calls[0].workspacePath).toBe(testConfig.workspacePath);
+  });
+
+  test("/project command in forum topic sets mapping", async () => {
+    const db = createTestDb();
+    const { bot, apiCalls } = createTestBot();
+    const forumChatIds = new Set([-1001234]);
+    const topicProjects = new TopicProjectRepo(db);
+
+    bot.use(createAuthMiddleware(111, forumChatIds));
+    setupMessageHandler(bot, testConfig, db, undefined as any, topicProjects);
+    bot.botInfo = FAKE_BOT_INFO;
+
+    await bot.handleUpdate(makeForumCommandUpdate("project", "~/code/thewhychain", -1001234, 42));
+    await sleep(100);
+
+    const sent = callsFor(apiCalls, "sendMessage");
+    expect(sent.some(c => String(c.payload.text).includes("Project set"))).toBe(true);
+    expect(topicProjects.get(42, -1001234)).toBe("~/code/thewhychain");
+  });
+
+  test("/project command shows current project", async () => {
+    const db = createTestDb();
+    const { bot, apiCalls } = createTestBot();
+    const forumChatIds = new Set([-1001234]);
+    const topicProjects = new TopicProjectRepo(db);
+    topicProjects.set(42, -1001234, "/some/path");
+
+    bot.use(createAuthMiddleware(111, forumChatIds));
+    setupMessageHandler(bot, testConfig, db, undefined as any, topicProjects);
+    bot.botInfo = FAKE_BOT_INFO;
+
+    await bot.handleUpdate(makeForumCommandUpdate("project", "", -1001234, 42));
+    await sleep(100);
+
+    const sent = callsFor(apiCalls, "sendMessage");
+    expect(sent.some(c => String(c.payload.text).includes("/some/path"))).toBe(true);
+  });
+
+  test("/project command in DM returns error", async () => {
+    const db = createTestDb();
+    const { bot, apiCalls } = createTestBot();
+    const topicProjects = new TopicProjectRepo(db);
+
+    bot.use(createAuthMiddleware(111, new Set()));
+    setupMessageHandler(bot, testConfig, db, undefined as any, topicProjects);
+    bot.botInfo = FAKE_BOT_INFO;
+
+    // DM command (no thread_id)
+    const update: Update = {
+      update_id: 9999,
+      message: {
+        message_id: 9998,
+        date: Math.floor(Date.now() / 1000),
+        text: "/project ~/code/foo",
+        chat: { id: 111, type: "private" },
+        from: { id: 111, is_bot: false, first_name: "Test" },
+        entities: [{ type: "bot_command", offset: 0, length: 8 }],
+      },
+    } as unknown as Update;
+
+    await bot.handleUpdate(update);
+    await sleep(100);
+
+    const sent = callsFor(apiCalls, "sendMessage");
+    expect(sent.some(c => String(c.payload.text).includes("forum topics"))).toBe(true);
+  });
+
+  test("/project clear removes mapping", async () => {
+    const db = createTestDb();
+    const { bot, apiCalls } = createTestBot();
+    const forumChatIds = new Set([-1001234]);
+    const topicProjects = new TopicProjectRepo(db);
+    topicProjects.set(42, -1001234, "/old/path");
+
+    bot.use(createAuthMiddleware(111, forumChatIds));
+    setupMessageHandler(bot, testConfig, db, undefined as any, topicProjects);
+    bot.botInfo = FAKE_BOT_INFO;
+
+    await bot.handleUpdate(makeForumCommandUpdate("project", "clear", -1001234, 42));
+    await sleep(100);
+
+    const sent = callsFor(apiCalls, "sendMessage");
+    expect(sent.some(c => String(c.payload.text).includes("Project unlinked"))).toBe(true);
+    expect(topicProjects.get(42, -1001234)).toBeNull();
   });
 });

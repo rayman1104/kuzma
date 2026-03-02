@@ -20,6 +20,20 @@ async def main():
         for m in reversed(msgs):
             who = "BOT" if m.sender_id == 7576656740 else "YOU"
             print(f"[{who}] {(m.text or '(no text)')}")
+    elif cmd == "send_forum":
+        chat_id = int(sys.argv[2])
+        topic_id = int(sys.argv[3])
+        msg = " ".join(sys.argv[4:]) or "test"
+        r = await c.send_message(chat_id, msg, reply_to=topic_id)
+        print(f"sent:{r.id}")
+    elif cmd == "read_forum":
+        chat_id = int(sys.argv[2])
+        topic_id = int(sys.argv[3])
+        n = int(sys.argv[4]) if len(sys.argv) > 4 else 8
+        msgs = await c.get_messages(chat_id, limit=n, reply_to=topic_id)
+        for m in reversed(msgs):
+            who = "BOT" if m.sender_id == 7576656740 else "YOU"
+            print(f"[{who}] {(m.text or '(no text)')}")
     await c.disconnect()
 
 asyncio.run(main())

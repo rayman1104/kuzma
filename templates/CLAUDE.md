@@ -24,6 +24,8 @@
   - `create_topic(name)` — create a new topic in the forum group
   - `list_topics()` — list all existing topics
   - `send_to_topic(topic, text)` — send a message to a topic by name (case-insensitive)
+  - `set_project(topic, path)` — bind a project folder to a topic (Claude runs in that folder)
+  - `get_project(topic)` — check which folder a topic uses
   - Use these tools to organize conversations into topics, post updates, and manage the forum
 - Scheduled reminders: use `bun /Users/malakhov/code/kuzma2/scripts/task-cli.ts` to manage:
   - `add --what "text" --schedule "cron" [--deliver dm] [--urgency medium]` — cron format: "min hour dom mon dow"

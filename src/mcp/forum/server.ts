@@ -93,5 +93,64 @@ server.registerTool(
   }
 );
 
+server.registerTool(
+  "set_project",
+  {
+    title: "Set Topic Project",
+    description: "Bind a project folder to a forum topic. Claude will run in that folder when responding in the topic.",
+    inputSchema: z.object({
+      topic: z.string().describe("Topic name (case-insensitive)"),
+      path: z.string().describe("Absolute path to the project folder"),
+    }),
+  },
+  async ({ topic, path }) => {
+    try {
+      const res = await fetch(`${BRIDGE_URL}/forum/set-project`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic, path }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error: string };
+        return { content: [{ type: "text" as const, text: `Error: ${err.error}` }] };
+      }
+      const data = await res.json() as { threadId: number };
+      return { content: [{ type: "text" as const, text: `Project set for topic "${topic}" (thread ${data.threadId}): ${path}` }] };
+    } catch (err: any) {
+      return { content: [{ type: "text" as const, text: `Error: ${err.message}` }] };
+    }
+  }
+);
+
+server.registerTool(
+  "get_project",
+  {
+    title: "Get Topic Project",
+    description: "Check which project folder a forum topic is bound to.",
+    inputSchema: z.object({
+      topic: z.string().describe("Topic name (case-insensitive)"),
+    }),
+  },
+  async ({ topic }) => {
+    try {
+      const res = await fetch(`${BRIDGE_URL}/forum/project?topic=${encodeURIComponent(topic)}`, {
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error: string };
+        return { content: [{ type: "text" as const, text: `Error: ${err.error}` }] };
+      }
+      const data = await res.json() as { topic: string; path: string | null };
+      if (!data.path) {
+        return { content: [{ type: "text" as const, text: `No project set for topic "${topic}". Using default workspace.` }] };
+      }
+      return { content: [{ type: "text" as const, text: `Topic "${topic}" → ${data.path}` }] };
+    } catch (err: any) {
+      return { content: [{ type: "text" as const, text: `Error: ${err.message}` }] };
+    }
+  }
+);
+
 const transport = new StdioServerTransport();
 server.connect(transport).catch((e) => { console.error(e); process.exit(1); });

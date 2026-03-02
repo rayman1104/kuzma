@@ -211,6 +211,29 @@ export function makeTopicEditedUpdate(
   } as unknown as Update;
 }
 
+export function makeForumCommandUpdate(
+  command: string,
+  args: string,
+  chatId: number,
+  threadId: number,
+  userId: number = 111,
+): Update {
+  const text = `/${command}${args ? " " + args : ""}`;
+  return {
+    update_id: ++updateId,
+    message: {
+      message_id: ++updateId,
+      date: Math.floor(Date.now() / 1000),
+      text,
+      message_thread_id: threadId,
+      is_topic_message: true,
+      chat: { id: chatId, type: "supergroup", title: "Test Forum", is_forum: true },
+      from: { id: userId, is_bot: false, first_name: "Test" },
+      entities: [{ type: "bot_command", offset: 0, length: command.length + 1 }],
+    },
+  } as unknown as Update;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 export function callsFor(apiCalls: ApiCall[], method: string): ApiCall[] {

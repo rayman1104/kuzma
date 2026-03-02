@@ -1,7 +1,7 @@
 import { resolve } from "path";
 import type { Bot, Context } from "grammy";
 import type { Config } from "../../config";
-import { SessionRepo } from "../../db/client";
+import { SessionRepo, TopicProjectRepo } from "../../db/client";
 import { runClaude, type RunOptions } from "../../claude/runner";
 import type { KuzmaEvent } from "../../claude/events";
 import { TelegramRenderer } from "../../claude/renderer";
@@ -16,6 +16,7 @@ export type ClaudeRunner = (options: RunOptions) => AsyncGenerator<KuzmaEvent>;
 export function setupMessageHandler(
   bot: Bot, config: Config, db: Database,
   claudeRunner: ClaudeRunner = runClaude,
+  topicProjects?: TopicProjectRepo,
   persona?: Persona,
 ) {
   const sessions = new SessionRepo(db);
@@ -31,14 +32,22 @@ export function setupMessageHandler(
     activeAborts.set(sessionKey, ac);
 
     const threadId = (ctx.message as any)?.message_thread_id as number | undefined;
-    const renderer = new TelegramRenderer(ctx.api, ctx.chat!.id, threadId);
+    const chatId = ctx.chat!.id;
+    const renderer = new TelegramRenderer(ctx.api, chatId, threadId);
+
+    // Per-topic project path override
+    let workspacePath = config.workspacePath;
+    if (topicProjects && threadId) {
+      const projectPath = topicProjects.get(threadId, chatId);
+      if (projectPath) workspacePath = projectPath;
+    }
 
     try {
       for await (const event of claudeRunner({
         prompt: text,
         sessionId: existingSession,
-        workspacePath: config.workspacePath,
-        systemPromptPath: resolve(config.workspacePath, "CLAUDE.md"),
+        workspacePath,
+        systemPromptPath: resolve(workspacePath, "CLAUDE.md"),
         abortSignal: ac.signal,
       })) {
         await renderer.handleEvent(event);
@@ -72,6 +81,28 @@ export function setupMessageHandler(
   bot.command("new", async (ctx) => {
     sessions.delete(getSessionKey(ctx));
     await ctx.reply(persona?.replies.newSession ?? DEFAULT_PERSONA.replies.newSession);
+  });
+
+  bot.command("project", async (ctx) => {
+    const threadId = (ctx.message as any)?.message_thread_id as number | undefined;
+    const chatId = ctx.chat!.id;
+    if (!threadId || !topicProjects) {
+      await ctx.reply("Only works in forum topics.");
+      return;
+    }
+    const arg = (ctx.message?.text ?? "").replace(/^\/project\s*/, "").trim();
+    if (!arg) {
+      const current = topicProjects.get(threadId, chatId);
+      await ctx.reply(current ? `Project: ${current}` : "No project linked.");
+    } else if (arg === "clear") {
+      topicProjects.delete(threadId, chatId);
+      sessions.delete(getSessionKey(ctx));
+      await ctx.reply("Project unlinked.");
+    } else {
+      topicProjects.set(threadId, chatId, arg);
+      sessions.delete(getSessionKey(ctx));
+      await ctx.reply(`Project set: ${arg}`);
+    }
   });
 
   bot.command("stop", async (ctx) => {

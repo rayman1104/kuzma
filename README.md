@@ -7,6 +7,33 @@ Your own Claude in Telegram -- a personal AI assistant with voice messages, foru
 
 ---
 
+## Comparison
+
+How Kuzma compares to [OpenClaw](https://github.com/openclaw/openclaw) and [Takopi](https://github.com/banteg/takopi):
+
+| Feature | Kuzma | OpenClaw | Takopi |
+|---|---|---|---|
+| **Focus** | Telegram-first personal assistant | Multi-platform AI gateway (21+ channels) | Telegram bridge to coding agents |
+| **AI backend** | Claude CLI | Claude, ChatGPT, Codex (model failover) | Claude Code, Codex, OpenCode, Pi |
+| **Voice messages** | Yes (local Parakeet STT) | Yes (ElevenLabs TTS, transcription hooks) | Yes (Telegram voice notes) |
+| **Photo & file handling** | Yes (images, documents with captions) | Media via temp file lifecycle | Files only (send to repo / fetch back) |
+| **Forum topics** | Yes (auto-mapped to separate Claude sessions) | Group isolation & activation modes | Yes (topic-to-repo/branch binding) |
+| **MCP tools** | Built-in (`ask_user`, `forum`) | Skills platform (bundled + managed) | No |
+| **Scheduled tasks** | Yes (cron, urgency levels, quiet hours, auto-completion) | Cron jobs & webhooks | Telegram scheduled messages only |
+| **Streaming responses** | Yes (progressive edits, Markdown-to-HTML, chunking) | Tool and block streaming | Progress streaming (commands, tools, file changes) |
+| **Session persistence** | SQLite per-topic sessions | Session history with context pruning | Stateless resume (chat or terminal) |
+| **Multi-repo / worktrees** | No | Multi-agent routing across workspaces | Yes (git worktrees, parallel runs) |
+| **Platforms** | Telegram | Telegram, WhatsApp, Slack, Discord, Signal, iMessage, IRC, Teams, +13 more | Telegram |
+| **Native apps** | No | macOS menu bar, iOS, Android | No |
+| **Self-hosting** | Docker Compose, single process | Daemon (launchd/systemd), Docker, Nix | CLI tool via `uv` |
+| **Runtime** | Bun | Node.js 22+ | Python 3.14+ |
+| **Message debouncing** | Yes (configurable delay + max wait) | No | Per-agent-session queue |
+| **Auth model** | Owner-only (Telegram user ID) | DM pairing policy, per-session elevated access | Single user |
+| **Interactive Q&A** | Yes (inline buttons via MCP) | No | No |
+| **Graceful shutdown** | Yes (goodbye message, cleanup) | Daemon lifecycle management | No |
+
+**TL;DR:** Kuzma is optimized for a deep Telegram-native experience with built-in MCP tools and task scheduling. OpenClaw is a broader multi-platform gateway with device apps and 21+ channels. Takopi is developer-focused, bridging Telegram to multiple coding agents with git worktree support.
+
 ## Features
 
 - **Claude CLI integration** -- spawns `claude` as a subprocess with streaming JSON output, session persistence, and configurable timeouts

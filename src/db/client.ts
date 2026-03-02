@@ -68,6 +68,34 @@ export class TopicRepo {
   }
 }
 
+export class TopicProjectRepo {
+  constructor(private db: Database) {}
+
+  set(threadId: number, chatId: number, path: string): void {
+    this.db.prepare(
+      `INSERT INTO topic_projects (thread_id, chat_id, project_path) VALUES (?, ?, ?)
+       ON CONFLICT(thread_id, chat_id) DO UPDATE SET project_path = excluded.project_path`
+    ).run(threadId, chatId, path);
+  }
+
+  get(threadId: number, chatId: number): string | null {
+    const row = this.db
+      .prepare("SELECT project_path FROM topic_projects WHERE thread_id = ? AND chat_id = ?")
+      .get(threadId, chatId) as { project_path: string } | null;
+    return row?.project_path ?? null;
+  }
+
+  delete(threadId: number, chatId: number): void {
+    this.db.prepare("DELETE FROM topic_projects WHERE thread_id = ? AND chat_id = ?").run(threadId, chatId);
+  }
+
+  all(chatId: number): Array<{ thread_id: number; project_path: string }> {
+    return this.db
+      .prepare("SELECT thread_id, project_path FROM topic_projects WHERE chat_id = ?")
+      .all(chatId) as Array<{ thread_id: number; project_path: string }>;
+  }
+}
+
 export class ForumChatRepo {
   constructor(private db: Database) {}
 

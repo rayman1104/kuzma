@@ -1,7 +1,7 @@
 import { resolve } from "path";
 import { getConfig } from "./config";
 import { startWatchdog } from "./watchdog";
-import { createDb, ForumChatRepo } from "./db/client";
+import { createDb, ForumChatRepo, TopicProjectRepo } from "./db/client";
 import { createBot } from "./bot/telegram";
 import { setupMessageHandler } from "./bot/handlers/message";
 import { AskUserBridge } from "./bot/bridge";
@@ -56,13 +56,15 @@ async function main() {
     await ctx.reply(lines.join("\n"), { parse_mode: "Markdown" });
   });
 
-  const { debouncer, ctxMap, processWithClaude } = setupMessageHandler(bot, config, db);
+  const topicProjectRepo = new TopicProjectRepo(db);
+  const activePersona = persona ?? undefined;
+  const { debouncer, ctxMap, processWithClaude } = setupMessageHandler(bot, config, db, undefined, topicProjectRepo, activePersona);
 
   // ask_user bridge + forum routes
   const topicRepo = new TopicRepo(db);
   const bridge = new AskUserBridge();
   const onQuestion = setupCallbackHandler(bot, bridge, config.telegramUserId);
-  bridge.addRoutes(createForumRoutes(bot.api, topicRepo, forumChats));
+  bridge.addRoutes(createForumRoutes(bot.api, topicRepo, forumChats, topicProjectRepo));
   bridge.startServer(config.askUserBridgePort, onQuestion);
 
   // Dynamic forum registration (must be before forum handlers)
@@ -70,7 +72,6 @@ async function main() {
 
   // Forum topic auto-mapping
   setupForumHandlers(bot, db);
-  const activePersona = persona ?? undefined;
   bot.on("message:voice", createVoiceHandler(config, debouncer, ctxMap, activePersona));
   bot.on("message:photo", createPhotoHandler(config, debouncer, ctxMap, activePersona));
   bot.on("message:document", createDocumentHandler(config, debouncer, ctxMap, activePersona));
