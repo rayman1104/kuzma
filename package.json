@@ -17,7 +17,8 @@
     "doctor": "bun run scripts/doctor.ts",
     "test": "bun test",
     "lint": "bunx @biomejs/biome check .",
-    "lint:fix": "bunx @biomejs/biome check --write ."
+    "lint:fix": "bunx @biomejs/biome check --write .",
+    "setup": "bun run scripts/setup.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
