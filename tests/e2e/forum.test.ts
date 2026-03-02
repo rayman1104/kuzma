@@ -1,7 +1,8 @@
 import { describe, test, expect } from "bun:test";
-import { createTestDb, createTestBot } from "./harness";
-import { ForumChatRepo } from "../../src/db/client";
+import { createTestDb, createTestBot, makeTopicCreatedUpdate, makeTopicEditedUpdate } from "./harness";
+import { ForumChatRepo, TopicRepo } from "../../src/db/client";
 import { setupJoinHandler } from "../../src/bot/handlers/join";
+import { setupForumHandlers } from "../../src/bot/handlers/forum";
 import type { Update } from "grammy/types";
 
 const FAKE_BOT_INFO = {
@@ -62,5 +63,42 @@ describe("forum join handler", () => {
     await bot.handleUpdate(makeMyChatMemberUpdate(-1001234, true, "left"));
     expect(forumChats.isRegistered(-1001234)).toBe(false);
     expect(forumChatIds.has(-1001234)).toBe(false);
+  });
+});
+
+describe("forum topic mapping", () => {
+  test("topic_created saves mapping to DB", async () => {
+    const db = createTestDb();
+    const { bot } = createTestBot();
+    const topics = new TopicRepo(db);
+    setupForumHandlers(bot, db);
+    bot.botInfo = FAKE_BOT_INFO;
+
+    await bot.handleUpdate(makeTopicCreatedUpdate("daily", 42, -1001234));
+    expect(topics.getThreadId("daily", -1001234)).toBe(42);
+  });
+
+  test("topic_edited updates mapping", async () => {
+    const db = createTestDb();
+    const { bot } = createTestBot();
+    const topics = new TopicRepo(db);
+    setupForumHandlers(bot, db);
+    bot.botInfo = FAKE_BOT_INFO;
+
+    await bot.handleUpdate(makeTopicCreatedUpdate("daily", 42, -1001234));
+    await bot.handleUpdate(makeTopicEditedUpdate("standup", 42, -1001234));
+    expect(topics.getThreadId("standup", -1001234)).toBe(42);
+    expect(topics.getThreadId("daily", -1001234)).toBeNull();
+  });
+
+  test("topic name is lowercased", async () => {
+    const db = createTestDb();
+    const { bot } = createTestBot();
+    const topics = new TopicRepo(db);
+    setupForumHandlers(bot, db);
+    bot.botInfo = FAKE_BOT_INFO;
+
+    await bot.handleUpdate(makeTopicCreatedUpdate("My Topic", 99, -1001234));
+    expect(topics.getThreadId("my topic", -1001234)).toBe(99);
   });
 });

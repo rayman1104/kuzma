@@ -43,6 +43,10 @@ export class TopicRepo {
     ).run(name, threadId, chatId);
   }
 
+  deleteByThreadId(threadId: number, chatId: number): void {
+    this.db.prepare("DELETE FROM topic_mappings WHERE thread_id = ? AND chat_id = ?").run(threadId, chatId);
+  }
+
   getThreadId(name: string, chatId: number): number | null {
     const row = this.db
       .prepare("SELECT thread_id FROM topic_mappings WHERE name = ? AND chat_id = ?")

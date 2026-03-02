@@ -17,6 +17,9 @@ export function setupForumHandlers(bot: Bot, db: Database) {
     const chatId = ctx.chat.id;
     const threadId = ctx.message.message_thread_id!;
     const newName = (ctx.message as any).forum_topic_edited?.name;
-    if (newName) topics.upsert(newName.toLowerCase(), threadId, chatId);
+    if (newName) {
+      topics.deleteByThreadId(threadId, chatId);
+      topics.upsert(newName.toLowerCase(), threadId, chatId);
+    }
   });
 }
