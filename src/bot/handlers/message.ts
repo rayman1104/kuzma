@@ -4,11 +4,13 @@ import { SessionRepo } from "../../db/client";
 import { runClaude } from "../../claude/runner";
 import { TelegramRenderer } from "../../claude/renderer";
 import { getSessionKey } from "../session";
+import { Debouncer } from "../middleware/debounce";
 import type { Database } from "bun:sqlite";
 
 export function setupMessageHandler(bot: Bot, config: Config, db: Database) {
   const sessions = new SessionRepo(db);
   const activeAborts = new Map<string, AbortController>();
+  const ctxMap = new Map<string, Context>();
 
   async function processWithClaude(ctx: Context, text: string): Promise<void> {
     const sessionKey = getSessionKey(ctx);
@@ -45,10 +47,17 @@ export function setupMessageHandler(bot: Bot, config: Config, db: Database) {
     }
   }
 
-  bot.on("message:text", async (ctx) => {
+  const debouncer = new Debouncer(2000, 30000, (key, combined) => {
+    const ctx = ctxMap.get(key);
+    if (ctx) processWithClaude(ctx, combined).catch(console.error);
+  });
+
+  bot.on("message:text", (ctx) => {
     const text = ctx.message.text;
     if (!text || text.startsWith("/")) return;
-    await processWithClaude(ctx, text);
+    const key = getSessionKey(ctx);
+    ctxMap.set(key, ctx);
+    debouncer.add(key, text);
   });
 
   bot.command("new", async (ctx) => {
@@ -63,5 +72,5 @@ export function setupMessageHandler(bot: Bot, config: Config, db: Database) {
     else { await ctx.reply("Nothing running."); }
   });
 
-  return { processWithClaude };
+  return { debouncer, ctxMap, processWithClaude };
 }
