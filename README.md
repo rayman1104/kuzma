@@ -279,4 +279,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, and PR
 
 ## License
 
-[MIT](LICENSE) -- Aleksandr Malakhov
+[MIT](LICENSE) -- Dmitrii Malakhov

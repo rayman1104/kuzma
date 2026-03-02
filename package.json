@@ -4,7 +4,7 @@
   "module": "index.ts",
   "type": "module",
   "license": "MIT",
-  "author": "Aleksandr Malakhov",
+  "author": "Dmitrii Malakhov",
   "repository": {
     "type": "git",
     "url": "https://github.com/malakhov-dmitrii/kuzma.git"
