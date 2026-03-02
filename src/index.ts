@@ -1,3 +1,4 @@
+import { resolve } from "path";
 import { getConfig } from "./config";
 import { startWatchdog } from "./watchdog";
 import { createDb, ForumChatRepo } from "./db/client";
@@ -13,6 +14,8 @@ import { createPhotoHandler, createDocumentHandler } from "./bot/handlers/photo"
 import { Scheduler } from "./scheduler/engine";
 import { TopicRepo } from "./db/client";
 import { TaskRepo } from "./scheduler/tasks";
+import { loadPersona, DEFAULT_PERSONA, type Persona } from "./persona";
+import { createOnboarding } from "./bot/handlers/onboarding";
 
 async function main() {
   const config = getConfig();
@@ -20,6 +23,29 @@ async function main() {
   const forumChats = new ForumChatRepo(db);
   const forumChatIds = new Set(forumChats.allIds());
   const bot = createBot(config, forumChatIds);
+
+  // Load persona (or enter onboarding mode)
+  const personaPath = resolve(config.dbPath, "..", "persona.json");
+  let persona: Persona | null = loadPersona(personaPath);
+
+  let onboarding: ReturnType<typeof createOnboarding> | null = null;
+  if (!persona) {
+    onboarding = createOnboarding(bot.api, config.telegramUserId, personaPath, config.workspacePath, (p) => {
+      persona = p;
+      onboarding = null;
+    });
+  }
+
+  // Onboarding interceptor — must be registered BEFORE setupMessageHandler
+  bot.on("message:text", (ctx, next) => {
+    if (onboarding && !onboarding.isComplete()) {
+      if (ctx.from?.id === config.telegramUserId && ctx.chat.type === "private") {
+        onboarding.handleMessage(ctx.message.text);
+        return; // don't call next()
+      }
+    }
+    return next();
+  });
 
   // /tasks command — register before setupMessageHandler so it's not consumed by text handler
   bot.command("tasks", async (ctx) => {
@@ -77,7 +103,7 @@ async function main() {
   bot.start({
     onStart: async (botInfo) => {
       console.log(`Bot @${botInfo.username} is running`);
-      try { await bot.api.sendMessage(config.telegramUserId, "Здорово. Кузьма на месте."); } catch {}
+      try { await bot.api.sendMessage(config.telegramUserId, persona?.replies.startup ?? DEFAULT_PERSONA.replies.startup); } catch {}
     },
   });
 
@@ -88,7 +114,7 @@ async function main() {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log("Shutting down...");
-    try { await bot.api.sendMessage(config.telegramUserId, "Пошёл я. Будет надо — зови."); } catch {}
+    try { await bot.api.sendMessage(config.telegramUserId, persona?.replies.shutdown ?? DEFAULT_PERSONA.replies.shutdown); } catch {}
     scheduler.stop();
     bot.stop();
     db.close();
