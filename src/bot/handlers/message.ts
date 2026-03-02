@@ -9,12 +9,14 @@ import { getSessionKey } from "../session";
 import { Debouncer } from "../middleware/debounce";
 import { buildPrompt } from "../context-builder";
 import type { Database } from "bun:sqlite";
+import { DEFAULT_PERSONA, type Persona } from "../../persona";
 
 export type ClaudeRunner = (options: RunOptions) => AsyncGenerator<KuzmaEvent>;
 
 export function setupMessageHandler(
   bot: Bot, config: Config, db: Database,
-  claudeRunner: ClaudeRunner = runClaude
+  claudeRunner: ClaudeRunner = runClaude,
+  persona?: Persona,
 ) {
   const sessions = new SessionRepo(db);
   const activeAborts = new Map<string, AbortController>();
@@ -47,7 +49,7 @@ export function setupMessageHandler(
     } catch (err: any) {
       if (err.name !== "AbortError") {
         console.error("Runner error:", err);
-        try { await ctx.reply("Тьфу, сломалось что-то."); } catch {}
+        try { await ctx.reply(persona?.replies.error ?? DEFAULT_PERSONA.replies.error); } catch {}
       }
     } finally {
       activeAborts.delete(sessionKey);
@@ -69,14 +71,14 @@ export function setupMessageHandler(
   // Commands must be registered BEFORE the catch-all text handler
   bot.command("new", async (ctx) => {
     sessions.delete(getSessionKey(ctx));
-    await ctx.reply("Добро, начнём с чистого листа.");
+    await ctx.reply(persona?.replies.newSession ?? DEFAULT_PERSONA.replies.newSession);
   });
 
   bot.command("stop", async (ctx) => {
     const key = getSessionKey(ctx);
     const ac = activeAborts.get(key);
-    if (ac) { ac.abort(); await ctx.reply("Стоп машина."); }
-    else { await ctx.reply("Да я и так стою."); }
+    if (ac) { ac.abort(); await ctx.reply(persona?.replies.stopped ?? DEFAULT_PERSONA.replies.stopped); }
+    else { await ctx.reply(persona?.replies.alreadyStopped ?? DEFAULT_PERSONA.replies.alreadyStopped); }
   });
 
   bot.on("message:text", (ctx) => {
