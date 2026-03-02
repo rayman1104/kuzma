@@ -1,0 +1,12 @@
+node_modules
+dist
+data
+.env
+.git
+.cursor
+.vscode
+.omc
+docs
+tests
+*.test.ts
+.DS_Store
