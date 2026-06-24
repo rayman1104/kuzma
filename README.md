@@ -129,13 +129,23 @@ All configuration is done via environment variables. Bun loads `.env` automatica
 
 ## Voice Transcription
 
-Kuzma uses a local Parakeet STT model for voice-to-text. The easiest way to run it:
+Kuzma uses a local Parakeet STT model for voice-to-text.
+
+The compose service references the image `ghcr.io/groxaxo/parakeet-tdt-0.6b-v3-fastapi-openai:cpu`, but that image is **not published to any registry** — the upstream project only ships a Dockerfile. Build it locally once:
+
+```bash
+./scripts/build-parakeet.sh   # clones upstream, patches it, builds & tags the image
+```
+
+Then start the service:
 
 ```bash
 docker compose up parakeet -d
 ```
 
 This starts a container with the `parakeet-tdt-0.6b-v3` model exposing an OpenAI-compatible `/v1/audio/transcriptions` endpoint on port 5092.
+
+> If `docker compose up parakeet` fails with `error from registry: denied`, the image hasn't been built yet — run `./scripts/build-parakeet.sh`. (It also patches an upstream bug where `Dockerfile.cpu` pins a nonexistent `onnxruntime` version.)
 
 Voice processing pipeline:
 1. Telegram sends an OGG voice file
