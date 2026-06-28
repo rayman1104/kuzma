@@ -25,6 +25,16 @@ export class TelegramRenderer {
   private accText = "";
   private lastEdit = 0;
   private timer: Timer | null = null;
+  // Serializes all send/edit ops so the "create first message" check-and-set
+  // (messageId) is atomic — otherwise concurrent doEdit/flush calls each see
+  // messageId === null mid-await and send duplicate messages.
+  private opChain: Promise<void> = Promise.resolve();
+
+  private runExclusive(fn: () => Promise<void>): Promise<void> {
+    const next = this.opChain.then(fn, fn);
+    this.opChain = next;
+    return next;
+  }
 
   constructor(
     private api: Api,
@@ -48,7 +58,7 @@ export class TelegramRenderer {
         await this.flush();
         break;
       case "error":
-        await this.sendNew(`Error: ${event.message}`);
+        await this.runExclusive(() => this.sendNew(`Error: ${event.message}`));
         break;
     }
   }
@@ -70,24 +80,32 @@ export class TelegramRenderer {
     }, delay);
   }
 
-  private async doEdit(): Promise<void> {
-    if (!this.accText.trim()) return;
-    const display = this.accText.slice(0, MAX_LEN);
-    try {
-      if (this.messageId) {
-        await this.api.editMessageText(this.chatId, this.messageId, display);
-      } else {
-        const opts: any = {};
-        if (this.threadId) opts.message_thread_id = this.threadId;
-        const sent = await this.api.sendMessage(this.chatId, display, opts);
-        this.messageId = sent.message_id;
-      }
-      this.lastEdit = Date.now();
-    } catch {}
+  private doEdit(): Promise<void> {
+    return this.runExclusive(async () => {
+      if (!this.accText.trim()) return;
+      const display = this.accText.slice(0, MAX_LEN);
+      try {
+        if (this.messageId) {
+          await this.api.editMessageText(this.chatId, this.messageId, display);
+        } else {
+          const opts: any = {};
+          if (this.threadId) opts.message_thread_id = this.threadId;
+          const sent = await this.api.sendMessage(this.chatId, display, opts);
+          this.messageId = sent.message_id;
+        }
+        this.lastEdit = Date.now();
+      } catch {}
+    });
   }
 
-  private async flush(): Promise<void> {
+  private flush(): Promise<void> {
+    // Cancel a not-yet-fired doEdit synchronously; an already-running doEdit is
+    // serialized via runExclusive so flush waits for it (and sees its messageId).
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+    return this.runExclusive(() => this.doFlush());
+  }
+
+  private async doFlush(): Promise<void> {
     if (!this.accText.trim()) return;
 
     const html = markdownToTelegramHtml(this.accText);
