@@ -3,6 +3,7 @@ import { getConfig } from "./config";
 import { startWatchdog } from "./watchdog";
 import { createDb, ForumChatRepo, TopicProjectRepo } from "./db/client";
 import { createBot } from "./bot/telegram";
+import { registerCommands } from "./bot/commands";
 import { setupMessageHandler } from "./bot/handlers/message";
 import { AskUserBridge } from "./bot/bridge";
 import { setupCallbackHandler } from "./bot/handlers/callback";
@@ -105,6 +106,7 @@ async function main() {
   bot.start({
     onStart: async (botInfo) => {
       console.log(`Bot @${botInfo.username} is running`);
+      try { await registerCommands(bot.api); } catch (e) { console.error("setMyCommands failed:", e); }
       try { await bot.api.sendMessage(config.telegramUserId, persona?.replies.startup ?? DEFAULT_PERSONA.replies.startup); } catch {}
     },
   });
