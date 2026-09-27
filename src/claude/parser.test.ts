@@ -27,7 +27,19 @@ describe("parseStreamLine", () => {
     const line = JSON.stringify({
       type: "result", subtype: "success", session_id: "abc", total_cost_usd: 0.05, duration_ms: 12000,
     });
-    expect(parseStreamLine(line)).toEqual({ type: "completed", sessionId: "abc", cost: 0.05, duration: 12000 });
+    expect(parseStreamLine(line)).toEqual({
+      type: "completed", sessionId: "abc", cost: 0.05, duration: 12000, isError: false, subtype: "success",
+    });
+  });
+
+  test("marks errored result", () => {
+    const line = JSON.stringify({
+      type: "result", subtype: "error_during_execution", session_id: "dead", is_error: true,
+    });
+    expect(parseStreamLine(line)).toEqual({
+      type: "completed", sessionId: "dead", cost: undefined, duration: undefined,
+      isError: true, subtype: "error_during_execution",
+    });
   });
 
   test("returns null for unknown types", () => {

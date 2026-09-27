@@ -39,7 +39,8 @@ export class TelegramRenderer {
   constructor(
     private api: Api,
     private chatId: number,
-    private threadId?: number // never pass 1 (General topic trap)
+    private threadId?: number, // never pass 1 (General topic trap)
+    private errorNotice = "Something went wrong, no answer came back."
   ) {
     if (threadId === 1) this.threadId = undefined;
   }
@@ -56,6 +57,10 @@ export class TelegramRenderer {
         break;
       case "completed":
         await this.flush();
+        // A failed run with no text at all would otherwise be complete silence.
+        if (event.isError && !this.accText.trim()) {
+          await this.runExclusive(() => this.sendNew(this.errorNotice));
+        }
         break;
       case "error":
         await this.runExclusive(() => this.sendNew(`Error: ${event.message}`));

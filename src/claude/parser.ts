@@ -20,7 +20,14 @@ export function parseStreamLine(line: string): KuzmaEvent | null {
   }
 
   if (msg.type === "result") {
-    return { type: "completed", sessionId: msg.session_id ?? "", cost: msg.total_cost_usd, duration: msg.duration_ms };
+    return {
+      type: "completed",
+      sessionId: msg.session_id ?? "",
+      cost: msg.total_cost_usd,
+      duration: msg.duration_ms,
+      isError: msg.is_error === true,
+      subtype: msg.subtype,
+    };
   }
 
   return null;

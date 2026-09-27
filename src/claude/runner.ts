@@ -12,9 +12,58 @@ export interface RunOptions {
 
 const RESULT_GRACE_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
+const STDERR_CAP = 4000;
+
+// `claude --resume <id>` fails when the transcript is gone (e.g. ~/.claude/projects
+// was cleared). It exits 1 with this on stderr and emits a single is_error result
+// event that echoes back the dead id — no started event, no text.
+const STALE_SESSION_RE = /No conversation found with session ID/i;
+
+interface Diagnostics {
+  stderr: string;
+  exitCode: number | null;
+}
 
 export async function* runClaude(options: RunOptions): AsyncGenerator<KuzmaEvent> {
-  const { prompt, sessionId, workspacePath, systemPromptPath, abortSignal, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+  const diagnostics: Diagnostics = { stderr: "", exitCode: null };
+  let sawContent = false;
+  let final: KuzmaEvent | null = null;
+
+  for await (const event of runAttempt(options, options.sessionId, diagnostics)) {
+    if (event.type === "completed") { final = event; break; }
+    sawContent = true;
+    yield event;
+  }
+
+  // Resume failed before producing anything: retry from scratch instead of going
+  // silent (and re-saving the dead id) on every message from now on.
+  const staleSession =
+    !!options.sessionId &&
+    !sawContent &&
+    final?.type === "completed" &&
+    final.isError === true &&
+    STALE_SESSION_RE.test(diagnostics.stderr);
+
+  if (staleSession) {
+    console.warn(`Session ${options.sessionId} is gone; starting a fresh one`);
+    yield* runAttempt(options, undefined, { stderr: "", exitCode: null });
+    return;
+  }
+
+  if (final) {
+    if (final.type === "completed" && final.isError && diagnostics.stderr) {
+      console.error("Claude exited with error:", diagnostics.stderr);
+    }
+    yield final;
+  }
+}
+
+async function* runAttempt(
+  options: RunOptions,
+  sessionId: string | undefined,
+  diagnostics: Diagnostics,
+): AsyncGenerator<KuzmaEvent> {
+  const { prompt, workspacePath, systemPromptPath, abortSignal, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
 
   const args = [
     "-p",
@@ -48,14 +97,26 @@ export async function* runClaude(options: RunOptions): AsyncGenerator<KuzmaEvent
     stderr: "pipe",
   });
 
+  // Drain stderr concurrently — an unread pipe can block the child, and the text
+  // is the only place resume failures are reported.
+  const stderrDone = (async () => {
+    try {
+      const text = await new Response(proc.stderr).text();
+      diagnostics.stderr = text.slice(0, STDERR_CAP);
+    } catch {}
+  })();
+
   let capturedSessionId = sessionId ?? "";
   let resultReceived = false;
   let killed = false;
 
-  const kill = () => { if (!killed) { killed = true; proc.kill(); } };
+  let stopReason: "abort" | "timeout" | null = null;
 
-  const timeout = setTimeout(kill, timeoutMs);
-  abortSignal?.addEventListener("abort", kill, { once: true });
+  const kill = () => { if (!killed) { killed = true; proc.kill(); } };
+  const onAbort = () => { stopReason ??= "abort"; kill(); };
+
+  const timeout = setTimeout(() => { stopReason ??= "timeout"; kill(); }, timeoutMs);
+  abortSignal?.addEventListener("abort", onAbort, { once: true });
 
   try {
     const reader = proc.stdout.getReader();
@@ -94,11 +155,20 @@ export async function* runClaude(options: RunOptions): AsyncGenerator<KuzmaEvent
     }
 
     if (!resultReceived) {
-      yield { type: "completed", sessionId: capturedSessionId };
+      // No result event: the CLI died, timed out, or was stopped. Everything but a
+      // user /stop is an error, so callers don't mistake silence for a finished turn.
+      yield {
+        type: "completed",
+        sessionId: capturedSessionId,
+        isError: stopReason !== "abort",
+        subtype: stopReason ?? "no_result",
+      };
     }
   } finally {
     clearTimeout(timeout);
-    abortSignal?.removeEventListener("abort", kill);
+    abortSignal?.removeEventListener("abort", onAbort);
     kill();
+    diagnostics.exitCode = await proc.exited;
+    await stderrDone;
   }
 }

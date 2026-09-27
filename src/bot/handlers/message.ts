@@ -33,7 +33,10 @@ export function setupMessageHandler(
 
     const threadId = (ctx.message as any)?.message_thread_id as number | undefined;
     const chatId = ctx.chat!.id;
-    const renderer = new TelegramRenderer(ctx.api, chatId, threadId);
+    const renderer = new TelegramRenderer(
+      ctx.api, chatId, threadId,
+      persona?.replies.error ?? DEFAULT_PERSONA.replies.error,
+    );
 
     // Per-topic project path override
     let workspacePath = config.workspacePath;
@@ -51,7 +54,10 @@ export function setupMessageHandler(
         abortSignal: ac.signal,
       })) {
         await renderer.handleEvent(event);
-        if ((event.type === "started" || event.type === "completed") && event.sessionId) {
+        // Never persist the id from a failed result — that's how a dead session id
+        // kept refreshing itself and wedging the topic for good.
+        const failed = event.type === "completed" && event.isError;
+        if ((event.type === "started" || event.type === "completed") && event.sessionId && !failed) {
           sessions.upsert(sessionKey, event.sessionId);
         }
       }
