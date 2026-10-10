@@ -3,21 +3,84 @@ import type { Config } from "../../config";
 import { getSessionKey } from "../session";
 import type { Debouncer } from "../middleware/debounce";
 import { buildPrompt } from "../context-builder";
-import { mkdirSync } from "fs";
+import {
+  downloadFile,
+  extractAudioWav,
+  extractVideoFrames,
+  FileTooBigError,
+  formatSize,
+  probeDuration,
+} from "../media";
+import { transcribeAudio } from "../../stt/parakeet";
+import { mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import { DEFAULT_PERSONA, type Persona } from "../../persona";
 
 const MEDIA_DIR = "media";
 
-async function downloadFile(
-  ctx: Context,
-  token: string,
-  destPath: string,
-): Promise<void> {
-  const file = await ctx.getFile();
-  const url = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
-  const buf = await (await fetch(url)).arrayBuffer();
-  await Bun.write(destPath, buf);
+interface Attachment {
+  fileUniqueId: string;
+  fileName?: string;
+  mimeType?: string;
+  fileSize?: number;
+  defaultExt: string;
+  isVideo: boolean;
+}
+
+// Everything that isn't a photo or voice note: files, videos, audio, GIFs,
+// round video notes. Telegram sends a video either as `video` or, when sent
+// "as file", as `document` — both land here.
+function getAttachment(ctx: Context): Attachment | null {
+  const m = ctx.message;
+  if (!m) return null;
+  const f = m.document ?? m.video ?? m.audio ?? m.animation ?? m.video_note;
+  if (!f) return null;
+  const defaultExt = m.document ? "bin" : m.audio ? "mp3" : "mp4";
+  const mimeType = "mime_type" in f ? f.mime_type : undefined;
+  return {
+    fileUniqueId: f.file_unique_id,
+    fileName: "file_name" in f ? f.file_name : undefined,
+    mimeType,
+    fileSize: f.file_size,
+    defaultExt,
+    isVideo: Boolean(m.video ?? m.animation ?? m.video_note) || Boolean(mimeType?.startsWith("video/")),
+  };
+}
+
+// Frames + optional transcript so Claude can actually "watch" the video.
+// Failures here shouldn't lose the file itself, so they only add a note.
+async function describeVideo(config: Config, videoPath: string, id: string): Promise<string[]> {
+  const lines: string[] = [];
+  try {
+    const duration = await probeDuration(videoPath);
+    const frames = await extractVideoFrames(videoPath, join(config.workspacePath, MEDIA_DIR, `${id}_frames`), duration);
+    lines.push(
+      `[Video: ${duration.toFixed(0)}s. You can't open the video itself — read these ${frames.length} evenly spaced frames instead:]`,
+      ...frames,
+    );
+  } catch (err) {
+    console.error("Video frames error:", err);
+    lines.push("[Couldn't extract frames from the video]");
+  }
+
+  const wav = join(config.workspacePath, MEDIA_DIR, `${id}.wav`);
+  try {
+    await extractAudioWav(videoPath, wav);
+    const transcript = await transcribeAudio(wav, config.parakeetUrl);
+    if (transcript) lines.push(`[Audio transcript:]\n${transcript}`);
+  } catch (err) {
+    // No audio track or STT is down — frames are still useful on their own.
+    console.error("Video audio skipped:", err instanceof Error ? err.message : err);
+  } finally {
+    try { unlinkSync(wav); } catch {}
+  }
+  return lines;
+}
+
+function extFor(a: Attachment): string {
+  const fromName = a.fileName?.includes(".") ? a.fileName.split(".").pop() : undefined;
+  const fromMime = a.mimeType?.split("/")[1]?.replace("quicktime", "mov");
+  return fromName ?? fromMime ?? a.defaultExt;
 }
 
 export function createPhotoHandler(
@@ -41,7 +104,7 @@ export function createPhotoHandler(
       const filename = `${largest.file_unique_id}.${ext}`;
       const dest = join(mediaPath, filename);
 
-      await downloadFile(ctx, config.telegramBotToken, dest);
+      await downloadFile(ctx, config, dest, largest.file_size);
 
       const caption = ctx.message?.caption ?? "";
       const absPath = dest;
@@ -66,28 +129,35 @@ export function createDocumentHandler(
   mkdirSync(mediaPath, { recursive: true });
 
   return async (ctx: Context): Promise<void> => {
-    const doc = ctx.message?.document;
-    if (!doc) return;
+    const att = getAttachment(ctx);
+    if (!att) return;
     const key = getSessionKey(ctx);
     ctxMap.set(key, ctx);
 
     try {
-      const ext = doc.file_name?.split(".").pop() ?? "bin";
-      const filename = `${doc.file_unique_id}.${ext}`;
+      const filename = `${att.fileUniqueId}.${extFor(att)}`;
       const dest = join(mediaPath, filename);
 
-      await downloadFile(ctx, config.telegramBotToken, dest);
+      await downloadFile(ctx, config, dest, att.fileSize);
 
       const caption = ctx.message?.caption ?? "";
-      const label = doc.file_name
-        ? `[File attached: ${dest} (${doc.file_name})]`
+      const label = att.fileName
+        ? `[File attached: ${dest} (${att.fileName})]`
         : `[File attached: ${dest}]`;
       const parts = [label];
+      if (att.isVideo) parts.push(...(await describeVideo(config, dest, att.fileUniqueId)));
       if (caption) parts.push(caption);
 
       debouncer.add(key, buildPrompt(ctx, parts.join("\n")));
     } catch (err) {
       console.error("Document error:", err);
+      if (err instanceof FileTooBigError) {
+        await ctx.reply(
+          `Файл весит ${formatSize(err.size)}, а Telegram отдаёт ботам максимум 20 MB. ` +
+            "Сожми его или пришли ссылкой (Google Drive, Dropbox и т.п.).",
+        );
+        return;
+      }
       await ctx.reply(persona?.replies.documentError ?? DEFAULT_PERSONA.replies.documentError);
     }
   };

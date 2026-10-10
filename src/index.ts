@@ -75,7 +75,10 @@ async function main() {
   setupForumHandlers(bot, db);
   bot.on("message:voice", createVoiceHandler(config, debouncer, ctxMap, activePersona));
   bot.on("message:photo", createPhotoHandler(config, debouncer, ctxMap, activePersona));
-  bot.on("message:document", createDocumentHandler(config, debouncer, ctxMap, activePersona));
+  bot.on(
+    ["message:document", "message:video", "message:audio", "message:animation", "message:video_note"],
+    createDocumentHandler(config, debouncer, ctxMap, activePersona),
+  );
 
   // Scheduler
   function getForumChatId(): number | null {

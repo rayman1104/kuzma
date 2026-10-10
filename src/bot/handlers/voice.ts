@@ -4,6 +4,7 @@ import { transcribeAudio } from "../../stt/parakeet";
 import { getSessionKey } from "../session";
 import type { Debouncer } from "../middleware/debounce";
 import { buildPrompt } from "../context-builder";
+import { downloadFile } from "../media";
 import { mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import { DEFAULT_PERSONA, type Persona } from "../../persona";
@@ -24,13 +25,9 @@ export function createVoiceHandler(
     ctxMap.set(key, ctx);
 
     try {
-      const file = await ctx.getFile();
-      const url = `https://api.telegram.org/file/bot${config.telegramBotToken}/${file.file_path}`;
-      const buf = await (await fetch(url)).arrayBuffer();
-
       const ogg = join(TMP, `${voice.file_unique_id}.ogg`);
       const wav = join(TMP, `${voice.file_unique_id}.wav`);
-      await Bun.write(ogg, buf);
+      await downloadFile(ctx, config, ogg, voice.file_size);
 
       // Convert OGG to WAV 16kHz mono using Bun.spawn
       const ffmpeg = Bun.spawn({
