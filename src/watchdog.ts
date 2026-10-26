@@ -7,6 +7,10 @@ export function startWatchdog(): Timer {
       const pids = text.trim().split("\n").filter(Boolean).map(Number);
       for (const pid of pids) {
         if (isNaN(pid)) continue;
+        // Only touch Claude processes spawned by the bot (current or previous instance): other
+        // stream-json sessions on the host (e.g. Claude Code driven by an IDE) are not ours.
+        const environ = await Bun.file(`/proc/${pid}/environ`).text().catch(() => "");
+        if (!environ.split("\0").includes("KUZMA_CHILD=1")) continue;
         const pp = Bun.spawn({ cmd: ["ps", "-o", "ppid=", "-p", String(pid)], stdout: "pipe" });
         const ppid = Number((await new Response(pp.stdout).text()).trim());
         if (ppid !== botPid && ppid > 1) {

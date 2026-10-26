@@ -88,6 +88,7 @@ async function* runAttempt(
   const env = { ...process.env };
   delete env.ANTHROPIC_API_KEY; // force subscription billing
   delete env.CLAUDECODE;        // prevent nested-session detection
+  env.KUZMA_CHILD = "1";        // lets the watchdog tell our children from other Claude sessions
 
   const proc = Bun.spawn({
     cmd: ["claude", ...args],
